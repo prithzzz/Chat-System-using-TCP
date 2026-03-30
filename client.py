@@ -3,11 +3,11 @@ import json
 import sys
 import os
  
-# ─── CONFIG ───────────────────────────────────────────
+# CONFIG 
 HOST = "127.0.0.1"
 PORT = 9999
  
-# ─── COLORS FOR TERMINAL ──────────────────────────────
+# COLORS FOR TERMINAL 
 GREEN  = "\033[92m"
 RED    = "\033[91m"
 YELLOW = "\033[93m"
@@ -37,7 +37,7 @@ def print_help():
     print("────────────────────────────────────────")
     print(f"{RESET}")
  
-# ─── RECEIVE MESSAGES FROM SERVER ────────────────────
+# RECEIVE MESSAGES FROM SERVER 
 async def receive_messages(reader, username):
     """Continuously listen for messages from server."""
     while True:
@@ -119,7 +119,7 @@ async def receive_messages(reader, username):
             print(f"\n{RED}[!] Receive error: {e}{RESET}")
             break
  
-# ─── SEND MESSAGES TO SERVER ─────────────────────────
+# SEND MESSAGES TO SERVER 
 async def send_messages(writer):
     """Read user input and send to server."""
     loop = asyncio.get_event_loop()
@@ -135,7 +135,7 @@ async def send_messages(writer):
             if not line:
                 continue
  
-            # ── COMMANDS ──
+            # COMMANDS
             if line.startswith("/quit"):
                 print(f"{RED}[*] Disconnecting...{RESET}")
                 writer.close()
@@ -179,7 +179,7 @@ async def send_messages(writer):
                 await writer.drain()
  
             else:
-                # ── Normal chat message ──
+                # Normal chat message 
                 packet = json.dumps({
                     "type":    "chat",
                     "content": line
@@ -195,7 +195,7 @@ async def send_messages(writer):
             print(f"{RED}[!] Send error: {e}{RESET}")
             break
  
-# ─── MAIN ─────────────────────────────────────────────
+# MAIN 
 async def main():
     clear()
     print_banner()
