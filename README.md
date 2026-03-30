@@ -1,4 +1,4 @@
-MULTI-ROOM SECURE CHAT SYSTEM WITH FILE TRANSFER
+# MULTI-ROOM SECURE CHAT SYSTEM WITH FILE TRANSFER
 
 This project implements a multi-room secure chat system that supports:
 
@@ -11,23 +11,23 @@ The system is built using Python and follows a modular architecture.
 
 --------------------------------------------------
 
-TEAM MEMBERS & RESPONSIBILITIES
+## TEAM MEMBERS & RESPONSIBILITIES
 
-Preethika — Networking + Protocol Layer
+### Prithika — Networking + Protocol Layer
 - Handles TCP socket communication  
 - Packet framing & serialization  
 - Client connection handshake  
 - Room join/leave packets  
 - File metadata transfer packets  
 
-Nikhil — Server + Concurrency Engine
+### Nikhil — Server + Concurrency Engine
 - Handles multiple clients simultaneously  
 - Multi-room logic  
 - Ensures message ordering per room  
 - Fault tolerance (disconnects, crashes)  
 - Broadcast system & room management  
 
-Priyanka — Client + File Transfer + UX
+### Priyanka — Client + File Transfer + UX
 - Main file: python.py  
 - Chat interface (CLI)  
 - Room switching & messaging  
@@ -36,7 +36,7 @@ Priyanka — Client + File Transfer + UX
 
 --------------------------------------------------
 
-PROJECT STRUCTURE
+## PROJECT STRUCTURE
 
 Chat-System-using-TCP/
 
@@ -51,19 +51,19 @@ README.md → Documentation
 
 --------------------------------------------------
 
-HOW TO RUN
+## HOW TO RUN
 
 Start Server:
-python server.py  
+python server/main_server.py  
 
 Start Client:
-python python.py  
+python client.py  
 
 Enter your name and room to begin chatting.
 
 --------------------------------------------------
 
-FILE TRANSFER
+## FILE TRANSFER
 
 Send file using:
 /send filename.ext  
@@ -73,7 +73,7 @@ received_filename.ext
 
 --------------------------------------------------
 
-REQUIREMENTS
+## REQUIREMENTS
 
 Python 3.14+  
 socket, threading, os  
