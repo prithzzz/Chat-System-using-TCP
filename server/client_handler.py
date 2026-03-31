@@ -26,14 +26,12 @@ class ClientHandler:
         """Main loop: read and process messages from this client."""
         logger.info(f"New connection from {self.addr}")
         try:
-            # Step 1: Registration
             await self._register()
 
-            # Step 2: Message loop
             while True:
                 line = await self.reader.readline()
                 if not line:
-                    break  # Client disconnected
+                    break
                 await self._process_message(line.decode().strip())
 
         except asyncio.IncompleteReadError:
@@ -44,63 +42,78 @@ class ClientHandler:
             await self._disconnect()
 
     async def _register(self):
-        """Wait for a JOIN packet to register the user."""
         await self.send({"type": "info", "content": "Enter username:"})
         while True:
             line = await self.reader.readline()
             if not line:
                 raise ConnectionError("Client disconnected before registering")
+
             data = json.loads(line.decode().strip())
             if data.get("type") == "join":
                 self.username = data.get("username", "").strip()
                 room_name = data.get("room", "general")
+
                 if not self.username:
                     await self.send({"type": "error", "content": "Username cannot be empty."})
                     continue
+
                 await self._join_room(room_name)
                 break
 
     async def _join_room(self, room_name: str):
-        """Join a room (leave current if in one)."""
-        # Leave existing room
         if self.current_room:
             try:
                 old_room = await self.room_manager.get_room(self.current_room)
                 await old_room.remove_member(self.username)
                 await old_room.broadcast(
-                    json.dumps({"type": "system", "content": f"{self.username} left the room.", "room": self.current_room})
+                    json.dumps({
+                        "type": "system",
+                        "content": f"{self.username} left the room.",
+                        "room": self.current_room,
+                    })
                 )
                 await self.room_manager.delete_room_if_empty(self.current_room)
             except RoomNotFoundError:
                 pass
 
-        # Join new room
         room = await self.room_manager.get_or_create_room(room_name)
         await room.add_member(self.username, self.writer)
         self.current_room = room_name
 
-        # Send history to the new joiner
         history = room.message_queue.get_history(limit=20)
         await self.send({
             "type": "history",
             "room": room_name,
             "messages": [
-                {"seq": m.seq_num, "sender": m.sender, "content": m.content, "time": m.timestamp}
+                {
+                    "seq": m.seq_num,
+                    "sender": m.sender,
+                    "content": m.content,
+                    "time": m.timestamp,
+                }
                 for m in history
-            ]
+            ],
         })
 
-        # Notify everyone in room
         await room.broadcast(
-            json.dumps({"type": "system", "content": f"{self.username} joined the room.", "room": room_name}),
-            exclude=self.username
+            json.dumps({
+                "type": "system",
+                "content": f"{self.username} joined the room.",
+                "room": room_name,
+            }),
+            exclude=self.username,
         )
-        await self.send({"type": "joined", "room": room_name, "members": room.member_list()})
+
+        await self.send({
+            "type": "joined",
+            "room": room_name,
+            "members": room.member_list(),
+        })
 
     async def _process_message(self, raw: str):
-        """Route incoming message based on type."""
         if not raw:
             return
+
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
@@ -119,69 +132,108 @@ class ClientHandler:
             await self._handle_private(data)
         elif msg_type == "ping":
             await self.send({"type": "pong"})
+        elif msg_type in ("file_meta", "file_chunk", "file_end"):
+            await self._handle_file(data)
         else:
             await self.send({"type": "error", "content": f"Unknown message type: {msg_type}"})
 
     async def _handle_chat(self, data: dict):
-        """Broadcast a chat message to everyone in current room."""
         if not self.current_room:
             await self.send({"type": "error", "content": "You are not in a room."})
             return
+
         content = data.get("content", "").strip()
         if not content:
             return
+
         try:
             room = await self.room_manager.get_room(self.current_room)
             msg = await room.message_queue.enqueue(self.username, content)
-            await room.broadcast(json.dumps({
-                "type": "chat",
-                "seq": msg.seq_num,
-                "sender": self.username,
-                "content": content,
-                "room": self.current_room,
-                "time": msg.timestamp
-            }))
+            await room.broadcast(
+                json.dumps({
+                    "type": "chat",
+                    "seq": msg.seq_num,
+                    "sender": self.username,
+                    "content": content,
+                    "room": self.current_room,
+                    "time": msg.timestamp,
+                })
+            )
         except RoomNotFoundError:
             await self.send({"type": "error", "content": "Room not found."})
 
     async def _handle_private(self, data: dict):
-        """Send a private message to a specific user in the same room."""
         target = data.get("to", "")
         content = data.get("content", "")
+
         if not self.current_room:
             return
+
         try:
             room = await self.room_manager.get_room(self.current_room)
             async with room.lock:
                 if target not in room.members:
-                    await self.send({"type": "error", "content": f"User '{target}' not found in room."})
+                    await self.send({
+                        "type": "error",
+                        "content": f"User '{target}' not found in room.",
+                    })
                     return
                 target_writer = room.members[target]
+
             msg_data = json.dumps({
                 "type": "private",
                 "from": self.username,
                 "to": target,
-                "content": content
+                "content": content,
             }) + "\n"
+
             target_writer.write(msg_data.encode())
             await target_writer.drain()
-            await self.send({"type": "private_sent", "to": target, "content": content})
+
+            await self.send({
+                "type": "private_sent",
+                "to": target,
+                "content": content,
+            })
         except RoomNotFoundError:
             pass
 
+    async def _handle_file(self, data: dict):
+        """Handle file packets and broadcast to everyone in room except sender."""
+        if not self.current_room:
+            await self.send({"type": "error", "content": "You are not in a room."})
+            return
+
+        try:
+            room = await self.room_manager.get_room(self.current_room)
+
+            if data.get("type") == "file_meta":
+                data["sender"] = self.username
+                data["room"] = self.current_room
+
+            await room.broadcast(json.dumps(data), exclude=self.username)
+
+        except RoomNotFoundError:
+            await self.send({"type": "error", "content": "Room not found."})
+
     async def _disconnect(self):
-        """Clean up when client disconnects."""
         logger.info(f"{self.username} disconnected from {self.addr}")
+
         if self.current_room:
             try:
                 room = await self.room_manager.get_room(self.current_room)
                 await room.remove_member(self.username)
                 await room.broadcast(
-                    json.dumps({"type": "system", "content": f"{self.username} disconnected.", "room": self.current_room})
+                    json.dumps({
+                        "type": "system",
+                        "content": f"{self.username} disconnected.",
+                        "room": self.current_room,
+                    })
                 )
                 await self.room_manager.delete_room_if_empty(self.current_room)
             except Exception:
                 pass
+
         try:
             self.writer.close()
             await self.writer.wait_closed()
